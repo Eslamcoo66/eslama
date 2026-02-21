@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+<meta charset="UTF-8">
+<title>بطولة الغراقة الرمضانية</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+body{font-family:Arial;background:#f0f2f5;padding:20px;direction:rtl;}
+h1{text-align:center;margin-bottom:20px;}
+.group{padding:15px;margin-bottom:25px;border-radius:12px;color:#fff;box-shadow:0 4px 10px rgba(0,0,0,0.15);}
+.group.A{background:linear-gradient(45deg,#4a90e2,#357abd);}
+.group.B{background:linear-gradient(45deg,#27ae60,#1e8449);}
+.group.E{background:linear-gradient(45deg,#f39c12,#d68910);}
+.group.F{background:linear-gradient(45deg,#c0392b,#922b21);}
+table{width:100%;border-collapse:collapse;margin-top:10px;background:#fff;color:#000;border-radius:8px;overflow:hidden;}
+th,td{border:1px solid #ddd;padding:8px;text-align:center;}
+th:first-child,td:first-child{text-align:center;font-weight:bold;}
+button{padding:6px 12px;margin:3px;cursor:pointer;border-radius:6px;border:none;background:#333;color:#fff;}
+input,select{padding:4px;margin-left:4px;}
+</style>
+</head>
+<body>
+
+<h1>🏆 بطولة الغراقة الرمضانية</h1>
+
+<div id="masterPanel"></div>
+<div id="audiencePanel"></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getDatabase, ref, onValue, set, push, get } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+// ================= Firebase Config =================
+const firebaseConfig={
+  apiKey:"YOUR_KEY",
+  authDomain:"gharaqa-ramadan.firebaseapp.com",
+  databaseURL:"https://gharaqa-ramadan-default-rtdb.firebaseio.com",
+  projectId:"gharaqa-ramadan"
+};
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+
+// كلمة سر الماستر
+const MASTER_PASSWORD = "7890";
+
+// تعريف المجموعات
+let groups = {
+  A:["أصدقاء عبدالوهاب","شباب الشوكة","محلة كيل","أصدقاء حوش عيسي","شباب كوم البوص","الغراقة الغربية"],
+  B:["الشوكة الحاجر","الريف المصري","الصوالحية","اصدقاء محمد فؤاد","الزمالكاوية","البرنوجي"],
+  E:["ممتاز","كوم البوص","نجع العزايم","شباب العساكرة","أنصاف","أصدقاء اسامه الجارحي"],
+  F:["نجوم بطورس","الديابة","كوم القناطر","فلسطين","الحريفة","الغراقة الشرقية"]
+};
+
+let isMaster = false;
+if(location.search.includes("master")){
+  const pw = prompt("ادخل كلمة سر الماستر");
+  if(pw === MASTER_PASSWORD) isMaster = true;
+}
+
+const masterDiv = document.getElementById("masterPanel");
+const audienceDiv = document.getElementById("audiencePanel");
+
+// إنشاء div واحد لكل مجموعة
+for(const g in groups){
+  // MASTER
+  const mDiv = document.createElement("div");
+  mDiv.className = "group " + g;
+  if(isMaster){
+    mDiv.innerHTML = `<h3>المجموعة ${g} (تحكم)</h3>
+    <div>
+      <select id="rename-${g}"></select>
+      <input id="newname-${g}" placeholder="الاسم الجديد">
+      <button onclick="renameTeam('${g}')">تغيير الاسم</button>
+      <button onclick="deleteTeam('${g}')">حذف الفريق</button>
+    </div>
+    <div>
+      <select id="t1-${g}"></select>
+      <input type="number" id="s1-${g}" value="0"> -
+      <input type="number" id="s2-${g}" value="0">
+      <select id="t2-${g}"></select>
+      <button onclick="addMatch('${g}')">إضافة نتيجة</button>
+    </div>`;
+  }
+  mDiv.innerHTML += `
+  <table id="masterTable-${g}">
+    <thead><tr><th>الفريق</th><th>لعب</th><th>فوز</th><th>تعادل</th><th>خسارة</th>
+    <th>+</th><th>-</th><th>فارق</th><th>نقاط</th></tr></thead><tbody></tbody>
+  </table>
+  <h4>النتائج</h4>
+  <table id="masterMatches-${g}">
+    <thead><tr><th>فريق</th><th>أهداف</th><th>فريق</th><th>أهداف</th>
+    ${isMaster?'<th>تعديل</th><th>حذف</th>':""}</tr></thead><tbody></tbody>
+  </table>`;
+  masterDiv.appendChild(mDiv);
+
+  // AUDIENCE
+  const aDiv = document.createElement("div");
+  aDiv.className = "group " + g;
+  aDiv.innerHTML = `<h3>المجموعة ${g}</h3>
+  <table id="audTable-${g}">
+    <thead><tr><th>الفريق</th><th>لعب</th><th>فوز</th><th>تعادل</th><th>خسارة</th>
+    <th>+</th><th>-</th><th>فارق</th><th>نقاط</th></tr></thead><tbody></tbody>
+  </table>
+  <h4>النتائج</h4>
+  <table id="audMatches-${g}">
+    <thead><tr><th>فريق</th><th>أهداف</th><th>فريق</th><th>أهداف</th></tr></thead><tbody></tbody>
+  </table>`;
+  audienceDiv.appendChild(aDiv);
+
+  // لو الماستر مفعل نملأ الخيارات
+  if(isMaster){
+    groups[g].forEach(t=>{
+      mDiv.querySelector(`#rename-${g}`).add(new Option(t,t));
+      mDiv.querySelector(`#t1-${g}`).add(new Option(t,t));
+      mDiv.querySelector(`#t2-${g}`).add(new Option(t,t));
+    });
+  }
+
+  // ربط Firebase
+  listenGroup(g);
+}
+
+// ================= Functions =================
+window.renameTeam = async function(g){
+  const sel = document.getElementById(`rename-${g}`);
+  const newName = document.getElementById(`newname-${g}`).value.trim();
+  if(!newName) return alert("اكتب الاسم الجديد");
+  const oldName = sel.value;
+  if(oldName === newName) return;
+
+  const snap = await get(ref(db,"matches/"+g));
+  const data = snap.val() || {};
+  for(const k in data){
+    let m = data[k];
+    if(m.t1===oldName) m.t1=newName;
+    if(m.t2===oldName) m.t2=newName;
+    set(ref(db,"matches/"+g+"/"+k), m);
+  }
+  groups[g] = groups[g].map(t=>t===oldName?newName:t);
+}
+
+window.deleteTeam = async function(g){
+  const sel = document.getElementById(`rename-${g}`);
+  const team = sel.value;
+  if(!confirm(`حذف الفريق "${team}"؟`)) return;
+  groups[g] = groups[g].filter(t=>t!==team);
+
+  const snap = await get(ref(db,"matches/"+g));
+  const data = snap.val() || {};
+  for(const k in data){
+    let m = data[k];
+    if(m.t1===team || m.t2===team) set(ref(db,"matches/"+g+"/"+k), null);
+  }
+}
+
+window.addMatch = function(g){
+  const t1 = document.getElementById(`t1-${g}`).value;
+  const t2 = document.getElementById(`t2-${g}`).value;
+  const s1 = parseInt(document.getElementById(`s1-${g}`).value)||0;
+  const s2 = parseInt(document.getElementById(`s2-${g}`).value)||0;
+  if(t1===t2) return alert("اختار فريقين مختلفين");
+  push(ref(db,"matches/"+g),{t1,t2,s1,s2,time:Date.now()});
+}
+
+window.editMatch = function(g,k){
+  const s1 = prompt("هدف الفريق الأول");
+  const s2 = prompt("هدف الفريق الثاني");
+  if(s1===null||s2===null) return;
+  set(ref(db,"matches/"+g+"/"+k+"/s1"), parseInt(s1)||0);
+  set(ref(db,"matches/"+g+"/"+k+"/s2"), parseInt(s2)||0);
+  set(ref(db,"matches/"+g+"/"+k+"/time"), Date.now());
+}
+
+window.delMatch = function(g,k){ if(confirm("حذف؟")) set(ref(db,"matches/"+g+"/"+k), null); }
+
+function listenGroup(g){
+  onValue(ref(db,"matches/"+g), snap=>{
+    const data = snap.val()||{};
+    const teams={};
+    groups[g].forEach(t=>teams[t]={name:t,p:0,w:0,d:0,l:0,gf:0,ga:0,gd:0,pts:0});
+
+    for(const k in data){
+      const m = data[k];
+      const a = teams[m.t1], b = teams[m.t2];
+      if(!a||!b) continue;
+      a.p++; b.p++;
+      a.gf+=m.s1; a.ga+=m.s2;
+      b.gf+=m.s2; b.ga+=m.s1;
+      if(m.s1>m.s2){a.w++;a.pts+=3;b.l++;}
+      else if(m.s2>m.s1){b.w++;b.pts+=3;a.l++;}
+      else{a.d++;b.d++;a.pts++;b.pts++;}
+    }
+
+    Object.values(teams).forEach(x=>x.gd=x.gf-x.ga);
+    const sorted = Object.values(teams).sort((a,b)=>b.pts-a.pts || b.gd-a.gd || b.gf-a.gf);
+
+    // مسح tbody قبل الحشو
+    const mastBody = document.querySelector(`#masterTable-${g} tbody`);
+    const mastMatches = document.querySelector(`#masterMatches-${g} tbody`);
+    const audBody = document.querySelector(`#audTable-${g} tbody`);
+    const audMatches = document.querySelector(`#audMatches-${g} tbody`);
+    mastBody.innerHTML = ""; mastMatches.innerHTML = "";
+    audBody.innerHTML = ""; audMatches.innerHTML = "";
+
+    sorted.forEach(d=>{
+      const row=`<td>${d.name}</td><td>${d.p}</td><td>${d.w}</td><td>${d.d}</td><td>${d.l}</td>
+      <td>${d.gf}</td><td>${d.ga}</td><td>${d.gd}</td><td>${d.pts}</td>`;
+      mastBody.innerHTML += `<tr>${row}</tr>`;
+      audBody.innerHTML += `<tr>${row}</tr>`;
+    });
+
+    for(const k in data){
+      const m = data[k];
+      const editDel = isMaster?`<td><button onclick="editMatch('${g}','${k}')">تعديل</button></td>
+      <td><button onclick="delMatch('${g}','${k}')">حذف</button></td>`:"";
+      mastMatches.innerHTML += `<tr><td>${m.t1}</td><td>${m.s1}</td><td>${m.t2}</td><td>${m.s2}</td>${editDel}</tr>`;
+      audMatches.innerHTML += `<tr><td>${m.t1}</td><td>${m.s1}</td><td>${m.t2}</td><td>${m.s2}</td></tr>`;
+    }
+  });
+}
+</script>
+</body>
+</html>
